@@ -1,23 +1,100 @@
 # -*- coding: utf-8 -*-
-"""
-임베딩 스텁
-- 실제 모델(bge-m3-ko 등) 연동 전까지는 0-벡터 반환
-- 차원은 config.embedder.dim을 따름
-"""
-from typing import List
-import math
+from typing import List, Optional, Dict, Any
+import os
 
-class Embedder:
-    def __init__(self, model: str = "bge-m3-ko", dim: int = 1024):
-        self.model = model
-        self.dim = dim
+class BaseEmbedder:
+    def encode(self, texts: List[str]): raise NotImplementedError
+
+# -------------------
+# A) Qwen 임베딩
+# -------------------
+class QwenEmbedder(BaseEmbedder):
+    def __init__(self, model_name: str = "Qwen/Qwen2.5-Embedding", normalize: bool = True, device: str = "cpu"):
+        from sentence_transformers import SentenceTransformer
+        self.model = SentenceTransformer(model_name, device=device)
+        self.normalize = normalize
+        self.dim = self.model.get_sentence_embedding_dimension()
+
+    def _l2(self, v):
+        import numpy as np
+        v = np.asarray(v, dtype="float32")
+        return v / (np.linalg.norm(v) + 1e-12)
 
     def encode(self, texts: List[str]):
-        # TODO: 실제 임베딩 모델 연동
-        # 스텁: 텍스트 길이를 기반으로 간단한 해시성 값으로 채움(디버깅용)
-        vecs = []
-        for t in texts:
-            base = (len(t) % 1000) / 1000.0
-            v = [base * ((i % 13)+1) / 13.0 for i in range(self.dim)]
-            vecs.append(v)
-        return vecs
+        embs = self.model.encode(texts, normalize_embeddings=False,
+                                 show_progress_bar=False, convert_to_numpy=True)
+        if self.normalize:
+            embs = [self._l2(v) for v in embs]
+        else:
+            embs = [v.astype("float32") for v in embs]
+        return embs
+
+# -------------------
+# B) OpenAI 임베딩
+# -------------------
+class OpenAIEmbedder(BaseEmbedder):
+    def __init__(self, model: str = "text-embedding-3-large", dim: int = 3072, normalize: bool = True):
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("OPENAI_API_KEY 환경변수가 필요합니다.")
+        from openai import OpenAI
+        self.client = OpenAI(api_key=api_key)
+        self.model = model
+        self.dim = dim
+        self.normalize = normalize
+
+    def _l2(self, v):
+        import numpy as np
+        v = np.asarray(v, dtype="float32")
+        return v / (np.linalg.norm(v) + 1e-12)
+
+    def encode(self, texts: List[str]):
+        out = []
+        for i in range(0, len(texts), 64):
+            batch = texts[i:i+64]
+            resp = self.client.embeddings.create(model=self.model, input=batch)
+            for e in resp.data:
+                v = e.embedding
+                out.append(self._l2(v) if self.normalize else v)
+        return out
+
+# -------------------
+# C) Local 경량 SBERT
+# -------------------
+class LocalSBERTEmbedder(BaseEmbedder):
+    def __init__(self, model_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+                 dim: Optional[int] = None, normalize: bool = True, device: str = "cpu"):
+        from sentence_transformers import SentenceTransformer
+        self.model = SentenceTransformer(model_name, device=device)
+        self.normalize = normalize
+        self.dim = dim or self.model.get_sentence_embedding_dimension()
+
+    def _l2(self, v):
+        import numpy as np
+        v = np.asarray(v, dtype="float32")
+        return v / (np.linalg.norm(v) + 1e-12)
+
+    def encode(self, texts: List[str]):
+        embs = self.model.encode(texts, normalize_embeddings=False,
+                                 show_progress_bar=False, convert_to_numpy=True)
+        if self.normalize:
+            embs = [self._l2(v) for v in embs]
+        else:
+            embs = [v.astype("float32") for v in embs]
+        return embs
+
+# -------------------
+# Factory 함수
+# -------------------
+def get_embedder(cfg: Dict[str, Any]) -> BaseEmbedder:
+    prov = (cfg.get("provider") or "qwen").lower()
+    if prov == "qwen":
+        return QwenEmbedder(model_name=cfg.get("model","Qwen/Qwen2.5-Embedding"),
+                            normalize=cfg.get("normalize", True))
+    elif prov == "openai":
+        return OpenAIEmbedder(model=cfg.get("model","text-embedding-3-large"),
+                              dim=cfg.get("dim",3072), normalize=cfg.get("normalize",True))
+    elif prov == "local":
+        return LocalSBERTEmbedder(dim=cfg.get("dim"), normalize=cfg.get("normalize",True))
+    else:
+        raise ValueError(f"Unknown embeddings provider: {prov}")

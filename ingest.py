@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-End-to-end ingest pipeline (skeleton)
-- PDF → images
-- dots.ocr → layout+text OR fallback vision
-- Postprocess → Units
-- Exaone structure (stub)
-- Chunk → Embed → Vector upsert
-"""
-import argparse, os, sys, json, pathlib, yaml
+import argparse, os, yaml, sys, traceback
 from typing import List, Dict
 
 from pipeline.pdf_to_image import pdf_to_images
@@ -17,75 +9,122 @@ from pipeline.vision_fallback import fallback_vision
 from pipeline.postprocess import assemble_units_from_page
 from pipeline.exaone_struct import structure_and_summarize
 from pipeline.chunker import split_into_chunks
-from pipeline.embedder import Embedder
-from pipeline.vector_sink import JSONVectorSink, MilvusVectorSink, FaissVectorSink
+from pipeline.embedder import get_embedder
+from pipeline.vector_sink import JSONVectorSink, FaissVectorSink
+
 
 def load_config(path: str) -> dict:
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
+
 def choose_sink(cfg: dict):
     vcfg = cfg.get("vector_sink", {})
-    typ = vcfg.get("type", "json")
+    typ = vcfg.get("type", "faiss")
     if typ == "json":
         return JSONVectorSink(vcfg.get("json_path", "./data/index.json"))
-    elif typ == "milvus":
-        return MilvusVectorSink(vcfg.get("milvus", {}))
     elif typ == "faiss":
-        return FaissVectorSink(vcfg.get("faiss", {}))
+        fc = vcfg.get("faiss", {})
+        # metric 추가 지원 (L2, IP 등)
+        metric = fc.get("metric", "L2").upper()
+        if metric not in ("L2", "IP"):
+            print(f"[WARN] Unknown FAISS metric={metric}, fallback=L2")
+            fc["metric"] = "L2"
+        return FaissVectorSink(fc)
     else:
         raise ValueError(f"Unknown vector_sink type: {typ}")
+
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pdf", required=True, help="Input PDF path")
-    ap.add_argument("--out", default="./out", help="Output directory (images, logs, etc.)")
+    ap.add_argument("--out", default="./out", help="Output directory for images")
     ap.add_argument("--config", default="./configs/config.yaml", help="YAML config path")
     args = ap.parse_args()
 
-    cfg = load_config(args.config)
+    try:
+        cfg = load_config(args.config)
+    except Exception as e:
+        print(f"[ERROR] Config load failed: {e}")
+        sys.exit(1)
+
     dpi = cfg["pipeline"]["dpi"]
-    ocr_thr = cfg["pipeline"]["ocr_conf_threshold"]
+    thr = cfg["pipeline"]["ocr_conf_threshold"]
     os.makedirs(args.out, exist_ok=True)
 
-    # 1) PDF -> Images
-    pages = pdf_to_images(args.pdf, dpi=dpi, out_dir=args.out)
+    # 1) PDF → Images
+    print("[INFO] Step 1: PDF → Images")
+    try:
+        pages = pdf_to_images(args.pdf, dpi=dpi, out_dir=args.out, grayscale=True)
+    except Exception as e:
+        print(f"[ERROR] PDF to image failed: {e}")
+        traceback.print_exc()
+        sys.exit(1)
 
-    # 2) OCR / Fallback
+    # 2) OCR or Fallback
+    print("[INFO] Step 2: OCR → Units")
     ocr = DotsOCR()
-    all_units: List[Dict] = []
-    for i, page_meta in enumerate(pages, start=1):
-        img_path = page_meta["path"]
-        ocr_page = ocr.run(img_path)
-        use_fallback = (ocr_page.get("avg_conf", 0.0) < ocr_thr) or (len(ocr_page.get("blocks", [])) == 0)
+    units: List[Dict] = []
+    for page_meta in pages:
+        try:
+            ocr_page = ocr.run(page_meta["path"])
+        except Exception as e:
+            print(f"[ERROR] OCR failed on {page_meta['path']}: {e}")
+            ocr_page = {"blocks": [], "avg_conf": 0.0}
+
+        use_fallback = (
+            ocr_page.get("avg_conf", 0.0) < thr
+            or len(ocr_page.get("blocks", [])) == 0
+        )
         if use_fallback:
-            vf = fallback_vision(img_path)
-            units = assemble_units_from_page(vf, page_no=page_meta["page"], mode="vision")
+            print(f"[WARN] Low OCR conf or empty, fallback: {page_meta['path']}")
+            vf = fallback_vision(page_meta["path"])
+            units.extend(assemble_units_from_page(vf, page_no=page_meta["page"], mode="vision"))
         else:
-            units = assemble_units_from_page(ocr_page, page_no=page_meta["page"], mode="ocr")
-        all_units.extend(units)
+            units.extend(assemble_units_from_page(ocr_page, page_no=page_meta["page"], mode="ocr"))
 
-    # 3) Exaone structure (stub)
-    structured_units = structure_and_summarize(all_units)
+    # 3) Exaone 구조화/요약
+    print("[INFO] Step 3: Structure & Summarize")
+    try:
+        units = structure_and_summarize(units)
+    except Exception as e:
+        print(f"[ERROR] structure_and_summarize failed: {e}")
 
-    # 4) Chunk
+    # 4) 청킹
+    print("[INFO] Step 4: Chunking")
     ccfg = cfg["chunk"]
-    chunks = split_into_chunks(structured_units,
-                               max_chars=ccfg["max_chars"],
-                               min_chars=ccfg["min_chars"],
-                               overlap_chars=ccfg["overlap_chars"])
+    chunks = split_into_chunks(
+        units,
+        max_chars=ccfg["max_chars"],
+        min_chars=ccfg["min_chars"],
+        overlap_chars=ccfg["overlap_chars"],
+    )
 
-    # 5) Embed
+    # 5) 임베딩
+    print("[INFO] Step 5: Embedding")
     ecfg = cfg["embedder"]
-    embedder = Embedder(model=ecfg["model"], dim=ecfg["dim"])
-    vectors = embedder.encode([c["text"] for c in chunks])
+    embedder = get_embedder(ecfg)
+    try:
+        vectors = embedder.encode([c["text"] for c in chunks])
+    except Exception as e:
+        print(f"[ERROR] Embedding failed: {e}")
+        traceback.print_exc()
+        sys.exit(1)
 
-    # 6) Vector sink
+    assert len(chunks) == len(vectors), f"❌ chunks({len(chunks)}) != vectors({len(vectors)})"
+
+    # 6) Vector Sink 업서트
+    print("[INFO] Step 6: Vector Upsert")
     sink = choose_sink(cfg)
-    sink.upsert(chunks, vectors)
+    try:
+        sink.upsert(chunks, vectors)
+    except Exception as e:
+        print(f"[ERROR] Vector sink upsert failed: {e}")
+        traceback.print_exc()
+        sys.exit(1)
 
-    # Summary
-    print(f"[OK] Ingested {len(pages)} pages → {len(structured_units)} units → {len(chunks)} chunks")
+    print(f"[OK] Ingested {len(pages)} pages → {len(units)} units → {len(chunks)} chunks")
+
 
 if __name__ == "__main__":
     main()
