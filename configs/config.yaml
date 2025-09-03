@@ -1,0 +1,28 @@
+pipeline:
+  dpi: 300
+  ocr_conf_threshold: 0.85
+
+chunk:
+  max_chars: 1400
+  min_chars: 800
+  overlap_chars: 200
+
+embedder:
+  model: bge-m3-ko
+  dim: 1024
+
+vector_sink:
+  type: json   # json | milvus | faiss
+  json_path: ./data/index.json
+  milvus:
+    host: localhost
+    port: 19530
+    collection: docs
+    metric_type: COSINE
+    index:
+      type: HNSW
+      params:
+        M: 32
+        efConstruction: 200
+  faiss:
+    index_path: ./data/index.faiss

@@ -1,0 +1,59 @@
+# -*- coding: utf-8 -*-
+"""
+Vector Sink
+- JSON 파일(기본) : 의존성 없이 빠르게 확인 가능
+- Milvus/FAISS : TODO 스텁(연동 지점 명시)
+"""
+import os, json, hashlib
+from typing import List, Dict
+
+class JSONVectorSink:
+    def __init__(self, path: str = "./data/index.json"):
+        self.path = path
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        if not os.path.exists(self.path):
+            with open(self.path, "w", encoding="utf-8") as f:
+                json.dump({"meta":"rag-index","items":[]}, f, ensure_ascii=False, indent=2)
+
+    def _load(self):
+        with open(self.path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def _save(self, data):
+        with open(self.path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+    def upsert(self, chunks: List[Dict], vectors: List[List[float]]):
+        data = self._load()
+        items = data.get("items", [])
+        for c, v in zip(chunks, vectors):
+            doc_id = c.get("meta", {}).get("doc_id", "unknown")
+            key_src = f"{doc_id}-{c.get('id')}"
+            uid = hashlib.md5(key_src.encode("utf-8")).hexdigest()
+            items.append({
+                "id": uid,
+                "chunk_id": c.get("id"),
+                "text": c.get("text"),
+                "vector": v,
+                "meta": c.get("meta", {})
+            })
+        data["items"] = items
+        self._save(data)
+
+class MilvusVectorSink:
+    def __init__(self, cfg: Dict):
+        self.cfg = cfg
+        # TODO: pymilvus 연결 및 스키마 생성
+
+    def upsert(self, chunks: List[Dict], vectors: List[List[float]]):
+        # TODO: upsert 구현
+        raise NotImplementedError("MilvusVectorSink: TODO - Implement with pymilvus")
+
+class FaissVectorSink:
+    def __init__(self, cfg: Dict):
+        self.cfg = cfg
+        # TODO: faiss index 로드/생성
+
+    def upsert(self, chunks: List[Dict], vectors: List[List[float]]):
+        # TODO: upsert 구현
+        raise NotImplementedError("FaissVectorSink: TODO - Implement with faiss")
