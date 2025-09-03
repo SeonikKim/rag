@@ -22,6 +22,7 @@ class DotsOCR:
             raise ImportError("pytesseract and Pillow are required for DotsOCR")
 
         # 하드코딩된 Tesseract 실행 파일 경로
+        
         pytesseract.pytesseract.tesseract_cmd = (
             r"C:\Program Files\Tesseract-OCR\tesseract.exe"
         )

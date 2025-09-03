@@ -16,7 +16,7 @@ embedder:
   normalize: true
 
 vector_sink:
-  type: json   # json | milvus | faiss
+  type: faiss   # json | milvus | faiss
   json_path: ./data/index.json
   milvus:
     host: localhost
