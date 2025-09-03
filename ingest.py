@@ -71,6 +71,12 @@ def main():
         except Exception as e:
             print(f"[ERROR] OCR failed on {page_meta['path']}: {e}")
             ocr_page = {"blocks": [], "avg_conf": 0.0}
+            
+ # Print OCR results for debugging/inspection
+        print(
+            f"Page {page_meta['page']} ({page_meta['path']}): "
+            f"{ocr_page.get('avg_conf', 0.0):.2f} {ocr_page.get('blocks')}"
+        )
 
         use_fallback = (
             ocr_page.get("avg_conf", 0.0) < thr
