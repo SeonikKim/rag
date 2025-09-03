@@ -1,27 +1,62 @@
 # -*- coding: utf-8 -*-
+"""간단한 OCR 래퍼.
+
+외부 dots.ocr 엔진 대신 Tesseract OCR(pytesseract)을 사용하여
+이미지에서 텍스트와 바운딩 박스를 추출한다.
 """
-dots.ocr 연동 스텁
-- 실제 엔진(REST/SDK) 호출 지점만 정의
-- 출력 스키마는 레이아웃+텍스트+bbox+conf를 포함
-"""
-from typing import Dict
+
+from typing import Dict, List
+
+try:  # optional imports; raise clearer error if missing
+    from PIL import Image
+    import pytesseract
+except Exception as e:  # pragma: no cover - optional dependency
+    Image = None  # type: ignore
+    pytesseract = None  # type: ignore
+
 
 class DotsOCR:
     def __init__(self, **kwargs):
         self.opts = kwargs
+        if Image is None or pytesseract is None:
+            raise ImportError("pytesseract and Pillow are required for DotsOCR")
 
     def run(self, image_path: str) -> Dict:
-        # TODO: dots.ocr 호출(REST/SDK). 아래는 데모 스텁.
-        return {
-            "page": 1,
-            "avg_conf": 0.90,
-            "blocks": [
-                {"id": "b1", "type": "title", "bbox": [50, 50, 500, 120], "text": "개요", "conf": 0.98},
-                {"id": "b2", "type": "paragraph", "bbox": [50, 140, 1000, 400],
-                 "text": "이 문서는 RAG 파이프라인의 개요를 설명한다.", "conf": 0.94},
-                {"id": "t1", "type": "table", "bbox": [50, 420, 1000, 700],
-                 "cells": [[{"text": "항목"}, {"text": "값"}],
-                           [{"text": "연도"}, {"text": "2025"}]], "conf": 0.90}
-            ],
-            "lang": "ko"
-        }
+        """Run OCR on the given image and return block-level results."""
+
+        img = Image.open(image_path)
+        lang = self.opts.get("lang", "kor+eng")
+
+        data = pytesseract.image_to_data(
+            img, lang=lang, output_type=pytesseract.Output.DICT
+        )
+
+        blocks: List[Dict] = []
+        n = len(data["text"])
+        for i in range(n):
+            text = data["text"][i].strip()
+            if not text:
+                continue
+            x, y = data["left"][i], data["top"][i]
+            w, h = data["width"][i], data["height"][i]
+            conf_str = data["conf"][i]
+            try:
+                conf = float(conf_str) / 100.0 if conf_str != "-1" else 0.0
+            except ValueError:
+                conf = 0.0
+
+            blocks.append(
+                {
+                    "id": f"b{i}",
+                    "type": "paragraph",
+                    "bbox": [x, y, x + w, y + h],
+                    "text": text,
+                    "conf": conf,
+                }
+            )
+
+        avg_conf = (
+            sum(b["conf"] for b in blocks) / len(blocks) if blocks else 0.0
+        )
+
+        return {"page": 1, "avg_conf": avg_conf, "blocks": blocks, "lang": lang}

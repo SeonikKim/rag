@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import argparse, os, json, yaml, faiss
+import argparse, os, json, yaml, faiss, sys
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
@@ -26,9 +26,11 @@ def main():
     meta_path = compute_meta_path(index_path)
 
     if not os.path.exists(index_path):
-        raise FileNotFoundError(f"FAISS index not found: {index_path}\n→ 먼저 ingest.py로 색인하세요.")
+        print(f"[ERROR] FAISS index not found: {index_path}\n→ 먼저 ingest.py로 색인하세요.")
+        sys.exit(1)
     if not os.path.exists(meta_path):
-        raise FileNotFoundError(f"Meta json not found: {meta_path}")
+        print(f"[ERROR] Meta json not found: {meta_path}")
+        sys.exit(1)
 
     # 1) 인덱스/메타 로드
     index = faiss.read_index(index_path)
@@ -54,30 +56,3 @@ def main():
     threshold = 0.55  # 유사도 기준 (실험 후 조정)
     found = False
     query_terms = args.query.split()
-
-    for rank, (idx, score) in enumerate(zip(I[0], D[0]), start=1):
-        if idx < 0 or idx >= len(items):
-            continue
-        it = items[idx]
-        text = it.get("text", "").replace("\n", " ")
-
-        # 유사도/거리 임계값 필터
-        if score < threshold:
-            continue
-
-        # 질의어 직접 포함 확인 (보너스: 관련성 강화)
-        if not any(term in text for term in query_terms):
-            continue
-
-        if len(text) > 300:
-            text = text[:300] + "..."
-        print(f"[{rank}] score={float(score):.4f} pages={it['meta'].get('pages')} heading={it['meta'].get('heading_path')}")
-        print(text)
-        print("-" * 80)
-        found = True
-
-    if not found:
-        print("⚠️ 관련된 결과를 찾지 못했습니다. (threshold 미만 또는 질의어 미포함)")
-
-if __name__ == "__main__":
-    main()

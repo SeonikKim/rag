@@ -5,7 +5,7 @@ Vector Sink
 - Milvus/FAISS : TODO 스텁(연동 지점 명시)
 """
 import os, json, hashlib
-from typing import List, Dict
+from typing import List, Dict, Sequence
 
 class JSONVectorSink:
     def __init__(self, path: str = "./data/index.json"):
@@ -16,17 +16,23 @@ class JSONVectorSink:
                 json.dump({"meta":"rag-index","items":[]}, f, ensure_ascii=False, indent=2)
 
     def _load(self):
+        if not os.path.exists(self.path):
+            return {"meta": "rag-index", "items": []}
         with open(self.path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                return {"meta": "rag-index", "items": []}
 
     def _save(self, data):
         with open(self.path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
-    def upsert(self, chunks: List[Dict], vectors: List[List[float]]):
+    def upsert(self, chunks: List[Dict], vectors: List[Sequence[float]]):
         data = self._load()
         items = data.get("items", [])
         for c, v in zip(chunks, vectors):
+            vec = v.tolist() if hasattr(v, "tolist") else list(v)
             doc_id = c.get("meta", {}).get("doc_id", "unknown")
             key_src = f"{doc_id}-{c.get('id')}"
             uid = hashlib.md5(key_src.encode("utf-8")).hexdigest()
@@ -34,7 +40,7 @@ class JSONVectorSink:
                 "id": uid,
                 "chunk_id": c.get("id"),
                 "text": c.get("text"),
-                "vector": v,
+                "vector": vec,
                 "meta": c.get("meta", {})
             })
         data["items"] = items

@@ -1,22 +1,69 @@
 # -*- coding: utf-8 -*-
-"""
-PDF → Image 변환 (skeleton)
-- PyMuPDF/fitz 사용 권장
-- 전처리 훅(deskew/denoise/binarize) 제공 지점 표시
-"""
-import os, pathlib
+"""PDF → Image 변환 유틸리티.
 
-def pdf_to_images(pdf_path: str, dpi: int = 300, out_dir: str = "./out", fmt: str = "png"):
+실제 PDF 페이지를 PyMuPDF(fitz)로 렌더링하여 이미지로 저장한다.
+`grayscale=True`일 경우 회색조 이미지로 변환하며, 반환 메타데이터에
+사용된 색공간과 해상도, 이미지 크기 등을 기록한다.
+"""
+
+import os
+from typing import List, Dict
+
+import fitz  # PyMuPDF
+
+
+def pdf_to_images(
+    pdf_path: str,
+    dpi: int = 300,
+    out_dir: str = "./out",
+    fmt: str = "png",
+    grayscale: bool = False,
+) -> List[Dict]:
+    """Convert a PDF into page images.
+
+    Args:
+        pdf_path: 입력 PDF 경로.
+        dpi: 렌더링 DPI (72가 100%).
+        out_dir: 출력 디렉터리.
+        fmt: 저장 포맷 (png, jpg 등).
+        grayscale: 회색조 여부.
+
+    Returns:
+        각 페이지에 대한 메타데이터 리스트. 페이지 번호, 이미지 경로, dpi,
+        폭/높이, 색공간 정보를 포함한다.
     """
-    Returns: List[{"page":int,"path":str,"dpi":int,"w":int,"h":int,"colorspace":"gray|rgb"}]
-    """
+
     os.makedirs(out_dir, exist_ok=True)
-    # NOTE: 실제 구현 시 아래를 PyMuPDF로 교체하세요.
-    # 여기서는 스켈레톤으로 더미 이미지를 생성하지 않고 경로만 기록합니다.
-    # 예시: p0001.png, p0002.png, ...
-    # TODO: fitz.open(pdf_path) → page.get_pixmap(matrix=mat).save(...)
-    # For now, assume 1-page placeholder.
-    stub_path = os.path.join(out_dir, "p0001.png")
-    # 사용자가 실제로 채워넣을 위치를 명확히 표시
-    open(stub_path, "wb").write(b"")  # placeholder empty file
-    return [{"page": 1, "path": stub_path, "dpi": dpi, "w": 0, "h": 0, "colorspace": "gray"}]
+    doc = fitz.open(pdf_path)
+    images: List[Dict] = []
+
+    try:
+        for page_no, page in enumerate(doc, start=1):
+            # DPI를 반영한 변환 행렬
+            mat = fitz.Matrix(dpi / 72, dpi / 72)
+
+            if grayscale:
+                pix = page.get_pixmap(matrix=mat, colorspace=fitz.csGRAY)
+                colorspace = "gray"
+            else:
+                pix = page.get_pixmap(matrix=mat)
+                colorspace = "rgb"
+
+            fname = f"p{page_no:04d}.{fmt}"
+            fpath = os.path.join(out_dir, fname)
+            pix.save(fpath)
+
+            images.append(
+                {
+                    "page": page_no,
+                    "path": fpath,
+                    "dpi": dpi,
+                    "w": pix.width,
+                    "h": pix.height,
+                    "colorspace": colorspace,
+                }
+            )
+    finally:
+        doc.close()
+
+    return images
