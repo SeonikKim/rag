@@ -1,15 +1,19 @@
 pipeline:
-  dpi: 300
+  dpi: 200            # lower DPI for reduced memory usage
   ocr_conf_threshold: 0.85
 
 chunk:
-  max_chars: 1400
-  min_chars: 800
-  overlap_chars: 200
+  max_chars: 800
+  min_chars: 400
+  overlap_chars: 100
 
 embedder:
-  model: bge-m3-ko
-  dim: 1024
+  provider: local
+  model: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+  dim: 384
+  device: cpu
+  batch_size: 16
+  normalize: true
 
 vector_sink:
   type: json   # json | milvus | faiss

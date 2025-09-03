@@ -8,7 +8,7 @@ Created: 2025-09-03T01:22:08
 - `pipeline/postprocess.py` : OCR 결과 정리(문단/표/리스트), 메타 유지
 - `pipeline/exaone_struct.py` : Exaone 구조화/요약 스텁(Map-Reduce 훅)
 - `pipeline/chunker.py` : 청킹 규칙(길이/타입/overlap)
-- `pipeline/embedder.py` : 임베딩 스텁(bge-m3-ko 가정, dim 설정 가능)
+- `pipeline/embedder.py` : 임베딩 스텁(Qwen/OpenAI/경량 SBERT 지원)
 - `pipeline/vector_sink.py` : VectorDB 업서트(JSON 파일 기본, Milvus/FAISS 훅)
 - `ingest.py` : 전체 파이프라인 오케스트레이션(골격)
 - `configs/config.yaml` : 파이프라인 파라미터
@@ -20,6 +20,10 @@ Created: 2025-09-03T01:22:08
 python ingest.py --pdf path/to/file.pdf --out ./out --config ./configs/config.yaml
 ```
 > 주의: 현재 OCR/LLM/임베딩은 **스텁**입니다. 실제 엔진 연동 시 해당 파일들의 TODO 주석을 참고해 구현하세요.
+
+## 저사양(CPU) 환경 실행
+- `configs/config.yaml` 은 기본적으로 GPU 없이 동작하도록 경량 SBERT 임베딩과 낮은 DPI(200)를 사용합니다.
+- 8GB RAM 수준의 랩탑에서는 `batch_size` 나 `dpi` 값을 필요에 맞게 추가 조정할 수 있습니다.
 
 ## 교체 포인트
 - dots.ocr 연동: `pipeline/ocr_dots.py` 의 `DotsOCR.run()`
