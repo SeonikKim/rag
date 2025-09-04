@@ -19,6 +19,7 @@ class QwenEmbedder(BaseEmbedder):
         try:
             from sentence_transformers import SentenceTransformer
             self.model = SentenceTransformer(model_name, device=device)
+
         except Exception as e:
             raise ImportError(
                 "sentence-transformers 임포트 실패. 'pip install \"transformers>=4.41,<5\" \"sentence-transformers>=2.7,<3\"' 로 설치했는지 확인하세요"
@@ -99,6 +100,7 @@ class LocalSBERTEmbedder(BaseEmbedder):
         try:
             from sentence_transformers import SentenceTransformer
             self.model = SentenceTransformer(model_name, device=device)
+
         except Exception as e:
             raise ImportError(
                 "sentence-transformers 임포트 실패. 'pip install \"transformers>=4.41,<5\" \"sentence-transformers>=2.7,<3\"' 로 설치했는지 확인하세요"

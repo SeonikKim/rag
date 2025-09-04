@@ -2,10 +2,12 @@
 # -*- coding: utf-8 -*-
 """Tesseract OCR 결과를 줄 단위로 묶고 PyKoSpacing 적용"""
 
+
 from collections import defaultdict
 from typing import Dict, List
 
 try:  # 선택적 임포트: 설치되어 있지 않으면 None 으로 둔다
+
     from PIL import Image
     import pytesseract
     from pykospacing import Spacing
@@ -64,6 +66,9 @@ def data_to_blocks(data: Dict, spacer) -> Dict:
     return {"blocks": blocks, "avg_conf": avg_conf}
 
 
+    avg_conf = sum(b["conf"] for b in blocks) / len(blocks) if blocks else 0.0
+    return {"blocks": blocks, "avg_conf": avg_conf}
+
 class DotsOCR:
     """Tesseract 기반 간단 OCR 래퍼"""
 
@@ -75,6 +80,7 @@ class DotsOCR:
             )
 
         # PyKoSpacing 객체는 비용이 크므로 한 번만 생성
+
         self.spacer = Spacing()
 
         # 하드코딩된 Tesseract 실행 파일 경로
@@ -89,6 +95,7 @@ class DotsOCR:
         lang = self.opts.get("lang", "kor+eng")
 
         # 단어 단위 정보를 얻어온 뒤 data_to_blocks 로 처리
+
         data = pytesseract.image_to_data(
             img, lang=lang, output_type=pytesseract.Output.DICT
         )
@@ -97,3 +104,4 @@ class DotsOCR:
         res.update({"page": 1, "lang": lang})
         return res
 
+      

@@ -93,6 +93,7 @@ class FaissVectorSink:
         else:
             self.meta = {"items": [], "dim": None, "metric": self.metric}
 
+
     def _create_index(self, dim: int):
         if self.metric == "IP":
             return self.faiss.IndexFlatIP(dim)

@@ -10,6 +10,7 @@ def main():
         default=None,
         help="메타 JSON 경로 (기본값: <index>.faiss.meta.json)",
     )
+
     args = ap.parse_args()
 
     index_path = args.index
