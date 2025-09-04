@@ -39,7 +39,9 @@ def main():
     index = faiss.read_index(index_path)
     with open(meta_path, "r", encoding="utf-8") as f:
         meta = json.load(f)
-    items = meta.get("items", [])
+    # items = meta.get("items", [])  # 기본
+    items = meta if isinstance(meta, list) else meta.get("items", []) # 수정
+
     if index.ntotal == 0 or len(items) == 0:
         raise RuntimeError("인덱스가 비어 있습니다. (chunks=0)")
 

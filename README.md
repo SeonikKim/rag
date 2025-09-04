@@ -13,6 +13,7 @@ Created: 2025-09-03T01:22:08
 - `ingest.py` : 전체 파이프라인 오케스트레이션(골격, PDF 내 텍스트 존재 시 OCR 생략)
 - `configs/config.yaml` : 파이프라인 파라미터
 - `requirements.txt` : 의존성 목록(스텁 상태, 선택 설치)
+- `scripts/rechunk_meta.py` : 기존 meta.json을 문단·불릿·표 행 단위로 재청킹
 
 ## 빠른 실행 (스켈레톤 모드)
 ```bash
@@ -20,6 +21,35 @@ Created: 2025-09-03T01:22:08
 python ingest.py --pdf path/to/file.pdf --out ./out --config ./configs/config.yaml
 ```
 > 주의: 현재 OCR/LLM/임베딩은 **스텁**입니다. PDF에 텍스트가 포함되어 있으면 OCR 없이 처리하며, 스캔본 페이지에만 OCR이 동작합니다. 실제 엔진 연동 시 해당 파일들의 TODO 주석을 참고해 구현하세요.
+
+## `meta.json` 재청킹
+1. 인제스트가 완료되면 `.faiss.meta.json` 파일이 생성됩니다.
+2. 해당 메타를 문단·불릿·표 행 단위로 재청킹하려면 다음 스크립트를 실행하세요.
+
+### POSIX (Linux/macOS)
+```bash
+python scripts/rechunk_meta.py \
+  --meta ./data/sample_index.faiss.meta.json \
+  --out ./data/sample_index.rechunk.json \
+  --max_chars 800 --min_chars 300 --overlap 80
+```
+
+### Windows PowerShell
+```powershell
+python scripts/rechunk_meta.py `
+  --meta ./data/sample_index.faiss.meta.json `
+  --out ./data/sample_index.rechunk.json `
+  --max_chars 800 --min_chars 300 --overlap 80
+```
+
+### Windows CMD
+```cmd
+python scripts/rechunk_meta.py ^
+  --meta .\data\sample_index.faiss.meta.json ^
+  --out .\data\sample_index.rechunk.json ^
+  --max_chars 800 --min_chars 300 --overlap 80
+```
+> Windows에서는 `\` 로 줄바꿈을 할 수 없으니 한 줄로 실행하거나 위와 같이 `^`(CMD), `` ` ``(PowerShell)을 사용하세요.
 
 ## 저사양(CPU) 환경 실행
 - `configs/config.yaml` 은 기본적으로 GPU 없이 동작하도록 경량 SBERT 임베딩과 낮은 DPI(200)를 사용합니다.

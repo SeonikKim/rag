@@ -65,6 +65,11 @@ def iter_units(chunk: Dict) -> List[Dict]:
 
 def process(meta_path: str, out_path: str, max_chars: int, min_chars: int, overlap: int):
     data = json.load(open(meta_path, "r", encoding="utf-8"))
+    # FaissVectorSink 메타 파일({"items": [...]})과
+    # 기존 배열 형태([{"text": ..., "meta": ...}, ...])를 모두 지원
+    if isinstance(data, dict) and "items" in data:
+        data = data["items"]
+
     all_units: List[Dict] = []
     for chunk in data:
         all_units.extend(iter_units(chunk))

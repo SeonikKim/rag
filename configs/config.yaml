@@ -4,8 +4,8 @@ pipeline:
 
 chunk:
   max_chars: 800
-  min_chars: 300
-  overlap_chars: 80
+  min_chars: 400
+  overlap_chars: 100
 
 embedder:
   provider: local
@@ -29,4 +29,5 @@ vector_sink:
         M: 32
         efConstruction: 200
   faiss:
-    index_path: ./data/sample_index.faiss
+    # index_path: ./data/sample_index.faiss # 기본
+    index_path: ./data/sample_index_rechunk.faiss #재청킹 한거~!
