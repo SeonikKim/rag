@@ -91,9 +91,8 @@ class FaissVectorSink:
             with open(self.meta_path, "r", encoding="utf-8") as f:
                 self.meta = json.load(f)
         else:
+            self.meta = {"items": [], "dim": None, "metric": self.metric}
 
-            self.meta = {"items": []}
- main
 
     def _create_index(self, dim: int):
         if self.metric == "IP":
@@ -147,4 +146,3 @@ class FaissVectorSink:
         q = np.array(vectors, dtype="float32")
         return self.index.search(q, k)
 
- main
