@@ -93,5 +93,6 @@ class DotsOCR:
             )
 
         avg_conf = sum(b["conf"] for b in blocks) / len(blocks) if blocks else 0.0
-        return {"page": 1, "avg_conf": avg_conf, "blocks": blocks, "lang": lang}
 
+        return {"page": 1, "avg_conf": avg_conf, "blocks": blocks, "lang": lang}
+ main
