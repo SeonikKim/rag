@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """Tesseract OCR 결과를 줄 단위로 묶고 PyKoSpacing 적용"""
 
+
 from collections import defaultdict
 from typing import Dict, List
 
@@ -11,12 +12,14 @@ try:  # 선택적 임포트: 설치되어 있지 않으면 None 으로 둔다
     from pykospacing import Spacing
     import cv2
     import numpy as np
+
 except Exception:  # pragma: no cover - optional dependency
     Image = None  # type: ignore
     pytesseract = None  # type: ignore
     Spacing = None  # type: ignore
     cv2 = None  # type: ignore
     np = None  # type: ignore
+
 
 
 def data_to_blocks(data: Dict, spacer) -> Dict:
@@ -42,6 +45,7 @@ def data_to_blocks(data: Dict, spacer) -> Dict:
         raw = "".join(words)  # 단어 사이 공백 제거 후 스페이싱 적용
         spaced = spacer(raw) if spacer else raw
         spaced = spaced.replace("  ", " ")  # 이중 공백 정리
+
 
         xs = [data["left"][j] for j in idxs]
         ys = [data["top"][j] for j in idxs]
@@ -89,6 +93,10 @@ def local_polarity(gray: "np.ndarray", tile: int = 128) -> "np.ndarray":
     return out
 
 
+
+    avg_conf = sum(b["conf"] for b in blocks) / len(blocks) if blocks else 0.0
+    return {"blocks": blocks, "avg_conf": avg_conf}
+
 class DotsOCR:
     """Tesseract 기반 간단 OCR 래퍼"""
 
@@ -100,6 +108,7 @@ class DotsOCR:
             )
 
         # PyKoSpacing 객체는 비용이 크므로 한 번만 생성
+
         self.spacer = Spacing()
 
         # 하드코딩된 Tesseract 실행 파일 경로
@@ -109,6 +118,7 @@ class DotsOCR:
 
     def run(self, image_path: str) -> Dict:
         """여러 전처리 조합으로 OCR을 수행하고 최고 신뢰 결과 반환"""
+
 
         lang = self.opts.get("lang", "kor+eng")
 
@@ -147,4 +157,5 @@ class DotsOCR:
         best = max(cands, key=lambda d: d.get("avg_conf", 0.0))
         best.update({"page": 1, "lang": lang})
         return best
+
 

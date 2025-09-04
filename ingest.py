@@ -52,7 +52,7 @@ def main():
     thr = cfg["pipeline"]["ocr_conf_threshold"]
     os.makedirs(args.out, exist_ok=True)
 
-    # 1) PDF → Images
+    # 1) PDF → 이미지 변환
     print("[INFO] Step 1: PDF → Images")
     try:
         pages = pdf_to_images(args.pdf, dpi=dpi, out_dir=args.out, grayscale=True)
@@ -61,7 +61,7 @@ def main():
         traceback.print_exc()
         sys.exit(1)
 
-    # 2) OCR or Fallback
+    # 2) OCR 수행 또는 Vision 대체
     print("[INFO] Step 2: OCR → Units")
     ocr = DotsOCR()
     units: List[Dict] = []
@@ -71,8 +71,8 @@ def main():
         except Exception as e:
             print(f"[ERROR] OCR failed on {page_meta['path']}: {e}")
             ocr_page = {"blocks": [], "avg_conf": 0.0}
-            
- # Print OCR results for debugging/inspection
+
+        # 디버깅용 OCR 결과 출력
         print(
             f"Page {page_meta['page']} ({page_meta['path']}): "
             f"{ocr_page.get('avg_conf', 0.0):.2f} {ocr_page.get('blocks')}"
@@ -85,11 +85,15 @@ def main():
         if use_fallback:
             print(f"[WARN] Low OCR conf or empty, fallback: {page_meta['path']}")
             vf = fallback_vision(page_meta["path"])
-            units.extend(assemble_units_from_page(vf, page_no=page_meta["page"], mode="vision"))
+            units.extend(
+                assemble_units_from_page(vf, page_no=page_meta["page"], mode="vision")
+            )
         else:
-            units.extend(assemble_units_from_page(ocr_page, page_no=page_meta["page"], mode="ocr"))
+            units.extend(
+                assemble_units_from_page(ocr_page, page_no=page_meta["page"], mode="ocr")
+            )
 
-    # 3) Exaone 구조화/요약
+    # 3) Exaone 기반 구조화/요약
     print("[INFO] Step 3: Structure & Summarize")
     try:
         units = structure_and_summarize(units)
@@ -119,7 +123,7 @@ def main():
 
     assert len(chunks) == len(vectors), f"❌ chunks({len(chunks)}) != vectors({len(vectors)})"
 
-    # 6) Vector Sink 업서트
+    # 6) 벡터 저장소 업서트
     print("[INFO] Step 6: Vector Upsert")
     sink = choose_sink(cfg)
     try:

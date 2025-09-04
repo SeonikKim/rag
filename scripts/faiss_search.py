@@ -56,6 +56,8 @@ def main():
 
     # 4) 결과 출력
     print(f"\n=== 검색 결과 상위 {args.k}개 ===")
+
+    
     query_terms = args.query.split()
     for rank, (idx, score) in enumerate(zip(I[0], D[0]), start=1):
         if idx < 0 or idx >= len(items):
@@ -67,6 +69,8 @@ def main():
                 text = text.replace(qt, f"[{qt}]")
         meta_info = it.get("meta", {})
         print(f"[{rank}] 점수={float(score):.4f} 페이지={meta_info.get('pages')}")
+
+        
         print(text[:300] + ("..." if len(text) > 300 else ""))
         print("-" * 80)
 
