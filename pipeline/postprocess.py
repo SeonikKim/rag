@@ -5,6 +5,8 @@ OCR/비전 해석 결과 → DocUnit[]
 - 메타데이터(page, source, conf, heading_path) 유지
 """
 from typing import List, Dict
+import re
+
 
 def to_markdown_table(cells):
     # cells: List[List[{"text":str}]]
@@ -15,9 +17,22 @@ def to_markdown_table(cells):
     rows = ["| " + " | ".join(c["text"] for c in row) + " |" for row in cells[1:]]
     return "\n".join([header, sep] + rows)
 
+
+CTRL_CHARS = re.compile(r"[\x00-\x1F\x7F]")
+HEADER_FOOTER = re.compile(r"^(?:\d+|page\s*\d+|\d+\s*/\s*\d+)$", re.I)
+TOC_LINE = re.compile(r"^\s*목차\s*$")
+
+
+def normalize_text(text: str) -> str:
+    text = CTRL_CHARS.sub(" ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
 def infer_heading_path(page_json, block):
-    # TODO: 제목 계층 추정 로직(폰트/크기/번호 패턴 활용)
+    # 제목 계층 추정을 위한 확장 포인트 (현재는 미사용)
     return []
+
 
 def assemble_units_from_page(page_json: Dict, page_no: int, mode: str) -> List[Dict]:
     units: List[Dict] = []
@@ -40,15 +55,54 @@ def assemble_units_from_page(page_json: Dict, page_no: int, mode: str) -> List[D
                 "heading_path": infer_heading_path(page_json, b)
             })
     elif mode == "pdf_text":
-        text = page_json.get("text", "").replace("-\n", "").replace("\n", " ").strip()
-        if text:
+        raw = page_json.get("text", "")
+        raw = raw.replace("-\n", "")
+        lines = raw.splitlines()
+        paras: List[str] = []
+        buf: List[str] = []
+        for ln in lines:
+            if not ln.strip():
+                if buf:
+                    paras.append(" ".join(buf))
+                    buf = []
+                continue
+            buf.append(ln.strip())
+        if buf:
+            paras.append(" ".join(buf))
+
+        h1 = None
+        h2 = None
+        h1_pat = re.compile(r"^[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+\.")
+        h2_pat = re.compile(r"^\d+\.")
+
+        for p in paras:
+            p = normalize_text(p)
+            if not p or HEADER_FOOTER.match(p) or TOC_LINE.match(p):
+                continue
+            if h1_pat.match(p):
+                h1 = p
+                h2 = None
+                continue
+            if h2_pat.match(p):
+                h2 = p
+                continue
+            heading_path = [x for x in [h1, h2] if x]
+            if re.match(r"^[-\*•·]\s+", p):
+                typ = "list_item"
+                text = re.sub(r"^[-\*•·]\s+", "", p)
+            elif "|" in p:
+                typ = "table_row"
+                text = p
+            else:
+                typ = "paragraph"
+                text = p
             units.append({
-                "type": "paragraph",
+                "type": typ,
                 "text": text,
                 "page": page_no,
                 "source": "pdf_text",
                 "conf": 1.0,
-                "heading_path": []
+                "heading_path": heading_path,
             })
     else:
         # vision fallback
