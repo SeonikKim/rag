@@ -18,7 +18,6 @@ class QwenEmbedder(BaseEmbedder):
     ):
         try:
             from sentence_transformers import SentenceTransformer
-
             self.model = SentenceTransformer(model_name, device=device)
 
         except Exception as e:
@@ -100,7 +99,6 @@ class LocalSBERTEmbedder(BaseEmbedder):
     ):
         try:
             from sentence_transformers import SentenceTransformer
-
             self.model = SentenceTransformer(model_name, device=device)
 
         except Exception as e:

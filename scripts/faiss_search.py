@@ -17,10 +17,10 @@ def compute_meta_path(index_path: str) -> str:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--query", required=True, help="검색 쿼리 문장")
-    ap.add_argument("--config", default="./configs/config.yaml", help="YAML config path")
-    ap.add_argument("--k", type=int, default=5, help="top-k")
-    ap.add_argument("--device", default="cpu", help="SentenceTransformer device (cpu/cuda)")
+    ap.add_argument("--query", required=True, help="검색할 문장")
+    ap.add_argument("--config", default="./configs/config.yaml", help="설정 파일 경로")
+    ap.add_argument("--k", type=int, default=5, help="상위 몇 개를 볼지")
+    ap.add_argument("--device", default="cpu", help="SentenceTransformer 실행 장치(cpu/cuda)")
     args = ap.parse_args()
 
     cfg = load_cfg(args.config)
@@ -29,10 +29,10 @@ def main():
     meta_path = compute_meta_path(index_path)
 
     if not os.path.exists(index_path):
-        print(f"[ERROR] FAISS index not found: {index_path}\n→ 먼저 ingest.py로 색인하세요.")
+        print(f"[ERROR] FAISS 인덱스를 찾을 수 없습니다: {index_path}\n→ 먼저 ingest.py로 색인하세요.")
         sys.exit(1)
     if not os.path.exists(meta_path):
-        print(f"[ERROR] Meta json not found: {meta_path}")
+        print(f"[ERROR] 메타 JSON을 찾을 수 없습니다: {meta_path}")
         sys.exit(1)
 
     # 1) 인덱스/메타 로드
@@ -46,16 +46,17 @@ def main():
     # 2) 임베더 로드
     ecfg = cfg["embedder"]
     model_id = ecfg.get("model", "Qwen/Qwen3-Embedding-0.6B")
-    print(f"[INFO] Loading embedder: {model_id} (device={args.device})")
+    print(f"[INFO] 임베더 로드: {model_id} (장치={args.device})")
     model = SentenceTransformer(model_id, device=args.device)
 
-    # 3) 쿼리 임베딩 → 검색
+    # 3) 질의 문장을 임베딩하고 검색
     qvec = model.encode([args.query], normalize_embeddings=True)
     qvec = np.asarray(qvec, dtype="float32")
     D, I = index.search(qvec, k=args.k)
 
     # 4) 결과 출력
-    print(f"\n=== RESULTS (top-{args.k}) ===")
+    print(f"\n=== 검색 결과 상위 {args.k}개 ===")
+
     query_terms = args.query.split()
     for rank, (idx, score) in enumerate(zip(I[0], D[0]), start=1):
         if idx < 0 or idx >= len(items):
@@ -66,7 +67,8 @@ def main():
             if qt:
                 text = text.replace(qt, f"[{qt}]")
         meta_info = it.get("meta", {})
-        print(f"[{rank}] score={float(score):.4f} pages={meta_info.get('pages')}")
+        print(f"[{rank}] 점수={float(score):.4f} 페이지={meta_info.get('pages')}")
+
         print(text[:300] + ("..." if len(text) > 300 else ""))
         print("-" * 80)
 
