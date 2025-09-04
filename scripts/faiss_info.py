@@ -5,11 +5,12 @@ import argparse, os, json, faiss
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--index", default="./data/index.faiss", help="FAISS index path")
-    ap.add_argument("--meta", default=None, help="meta json path (default: <index>.meta.json)")
+    ap.add_argument("--meta", default=None, help="meta json path (default: <index>.faiss.meta.json)")
     args = ap.parse_args()
 
     index_path = args.index
-    meta_path = args.meta or (os.path.splitext(index_path)[0] + ".meta.json")
+    # ingest.py와 동일하게 <index>.faiss.meta.json 규칙 사용
+    meta_path = args.meta or (index_path + ".meta.json")
 
     if not os.path.exists(index_path):
         raise FileNotFoundError(f"FAISS index not found: {index_path}")
