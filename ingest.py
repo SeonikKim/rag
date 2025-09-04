@@ -132,6 +132,8 @@ def main():
             units.extend(
                 assemble_units_from_page(ocr_page, page_no=page_meta["page"], mode="ocr")
             )
+    # pdf_text만 인덱싱 (vision/ocr 결과는 별도 컬렉션으로 처리)
+    units = [u for u in units if u.get("source") == "pdf_text"]
 
     # 3) Exaone 기반 구조화/요약
     print("[INFO] Step 3: Structure & Summarize")
