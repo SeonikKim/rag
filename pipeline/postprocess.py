@@ -63,6 +63,7 @@ def assemble_units_from_page(page_json: Dict, page_no: int, mode: str) -> List[D
         for ln in lines:
             s = ln.strip()
             if not s:
+
                 if buf:
                     paras.append(" ".join(buf))
                     buf = []
@@ -89,6 +90,7 @@ def assemble_units_from_page(page_json: Dict, page_no: int, mode: str) -> List[D
                     tmp = []
             if tmp:
                 paras.append(" ".join(tmp))
+
 
         h1 = None
         h2 = None
