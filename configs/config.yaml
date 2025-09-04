@@ -4,8 +4,8 @@ pipeline:
 
 chunk:
   max_chars: 800
-  min_chars: 400
-  overlap_chars: 100
+  min_chars: 300
+  overlap_chars: 80
 
 embedder:
   provider: local
