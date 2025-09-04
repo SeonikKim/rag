@@ -61,14 +61,36 @@ def assemble_units_from_page(page_json: Dict, page_no: int, mode: str) -> List[D
         paras: List[str] = []
         buf: List[str] = []
         for ln in lines:
-            if not ln.strip():
+            s = ln.strip()
+            if not s:
+
                 if buf:
                     paras.append(" ".join(buf))
                     buf = []
                 continue
-            buf.append(ln.strip())
+            buf.append(s)
+            # 빈 줄이 없어도 문장 종료 기호를 만나면 단락 분리
+            if re.search(r"[\.?!]$|다\.$|요\.$", s):
+                paras.append(" ".join(buf))
+                buf = []
         if buf:
             paras.append(" ".join(buf))
+
+        # 페이지 전체가 하나의 단락으로 뭉친 경우 추가 분리
+        if len(paras) <= 1 and paras:
+            sentences = re.split(r"(?<=[\.?!다요])\s+", paras[0])
+            paras = []
+            tmp: List[str] = []
+            for sent in sentences:
+                if not sent:
+                    continue
+                tmp.append(sent)
+                if len(tmp) >= 2:
+                    paras.append(" ".join(tmp))
+                    tmp = []
+            if tmp:
+                paras.append(" ".join(tmp))
+
 
         h1 = None
         h2 = None

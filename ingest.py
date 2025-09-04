@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import argparse, os, yaml, sys, traceback
+import argparse, os, sys, traceback
 from typing import List, Dict
 
 import fitz
@@ -14,10 +14,44 @@ from pipeline.chunker import split_into_chunks
 from pipeline.embedder import get_embedder
 from pipeline.vector_sink import JSONVectorSink, FaissVectorSink
 
+try:
+    import yaml  # type: ignore
+except Exception:
+    yaml = None
+
 
 def load_config(path: str) -> dict:
     with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        data = f.read()
+    if yaml:
+        return yaml.safe_load(data)
+    # PyYAML이 없을 때를 위한 매우 단순한 파서
+    cfg: Dict = {}
+    stack = [(0, cfg)]
+    for raw_line in data.splitlines():
+        line = raw_line.split('#', 1)[0]
+        if not line.strip():
+            continue
+        indent = len(line) - len(line.lstrip())
+        key, val = [x.strip() for x in line.split(':', 1)]
+        while stack and indent < stack[-1][0]:
+            stack.pop()
+        cur = stack[-1][1]
+        if val == '':
+            cur[key] = {}
+            stack.append((indent + 2, cur[key]))
+        else:
+            if val.lower() in ('true', 'false'):
+                cur[key] = val.lower() == 'true'
+            else:
+                try:
+                    cur[key] = int(val)
+                except ValueError:
+                    try:
+                        cur[key] = float(val)
+                    except ValueError:
+                        cur[key] = val
+    return cfg
 
 
 def choose_sink(cfg: dict):
