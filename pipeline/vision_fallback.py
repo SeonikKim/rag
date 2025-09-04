@@ -8,10 +8,11 @@ from typing import Dict, List
 
 def fallback_vision(image_path: str) -> Dict:
     # TODO: Varco/Kanana 호출 및 결과 정규화
+    # ⚠️ OCR 본문 인덱싱에 합치지 말고 별도 저장소/필드로만 사용
     return {
         "mode": "vision_infer",
-        "summaries": ["라인 차트로 2018~2024 매출 추이를 표현, 2024에 최고치"],
-        "facts": [{"k": "x_axis", "v": "연도"}, {"k": "y_axis", "v": "매출(억원)"}],
-        "triples": [["2021", "매출", "250"]],
-        "captions": [{"bbox": [60, 420, 1000, 700], "text": "Figure 2: Sales Trend"}]
+        "summaries": [],  # 노이즈 줄이기 위해 기본값은 비워둠
+        "facts": [],      # 필요시 외부 모듈에서 채움
+        "triples": [],
+        "captions": []
     }

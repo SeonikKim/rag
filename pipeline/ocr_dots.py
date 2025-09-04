@@ -100,8 +100,10 @@ def local_polarity(gray: "np.ndarray", tile: int = 128) -> "np.ndarray":
 class DotsOCR:
     """Tesseract 기반 간단 OCR 래퍼"""
 
-    def __init__(self, **kwargs):
+    def __init__(self, psm: int = 6, oem: int = 1, **kwargs):
         self.opts = kwargs
+        self.psm = psm
+        self.oem = oem
         if None in (Image, pytesseract, Spacing, cv2, np):
             raise ImportError(
                 "pytesseract, Pillow, OpenCV, numpy, PyKoSpacing 패키지가 필요합니다",
@@ -120,42 +122,55 @@ class DotsOCR:
         """여러 전처리 조합으로 OCR을 수행하고 최고 신뢰 결과 반환"""
 
 
-        lang = self.opts.get("lang", "kor+eng")
+        lang_pair = self.opts.get("lang_pair", ("kor+eng", "kor"))
 
         # 원본 이미지를 그레이스케일로 로드
         gray = Image.open(image_path).convert("L")
         gray_np = np.array(gray)
 
-        def ocr_array(arr: "np.ndarray") -> Dict:
-            """넘파이 배열을 받아 OCR 수행"""
-            pil = Image.fromarray(arr)
-            data = pytesseract.image_to_data(
-                pil, lang=lang, output_type=pytesseract.Output.DICT
-            )
-            return data_to_blocks(data, self.spacer)
-
-        cands: List[Dict] = []
-
-        # 1) 원본
-        cands.append(ocr_array(gray_np))
-
-        # 2) 전역 반전
-        inv = cv2.bitwise_not(gray_np)
-        cands.append(ocr_array(inv))
-
-        # 3) 그레이스케일 + 적응 이진화
+        # 공통 전처리 후보들을 미리 계산
+        variants: List["np.ndarray"] = [gray_np]
+        variants.append(cv2.bitwise_not(gray_np))
         th = cv2.adaptiveThreshold(
             gray_np, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 25, 15
         )
-        cands.append(ocr_array(th))
+        variants.append(th)
+        variants.append(local_polarity(gray_np))
 
-        # 4) 타일 단위 극성 판정 + 적응 이진화
-        local = local_polarity(gray_np)
-        cands.append(ocr_array(local))
+        def ocr_array(arr: "np.ndarray", lang: str) -> Dict:
+            """넘파이 배열을 받아 OCR 수행"""
+            pil = Image.fromarray(arr)
+            data = pytesseract.image_to_data(
+                pil,
+                lang=lang,
+                config=f"--psm {self.psm} --oem {self.oem}",
+                output_type=pytesseract.Output.DICT,
+            )
+            return data_to_blocks(data, self.spacer)
 
-        # 평균 신뢰도가 가장 높은 결과 선택
-        best = max(cands, key=lambda d: d.get("avg_conf", 0.0))
-        best.update({"page": 1, "lang": lang})
-        return best
+        def best_for_lang(lang: str) -> Dict:
+            """여러 전처리 중 평균 신뢰도 최고 결과 반환"""
+            cands: List[Dict] = [ocr_array(v, lang) for v in variants]
+            return max(cands, key=lambda d: d.get("avg_conf", 0.0))
+
+        # 두 언어 설정으로 각각 최고 결과 산출
+        res_mixed = best_for_lang(lang_pair[0])
+        res_kor = best_for_lang(lang_pair[1])
+
+        # 줄 단위로 신뢰도 비교하여 높은 쪽 채택
+        blocks: List[Dict] = []
+        max_len = max(len(res_mixed["blocks"]), len(res_kor["blocks"]))
+        for i in range(max_len):
+            b1 = res_mixed["blocks"][i] if i < len(res_mixed["blocks"]) else None
+            b2 = res_kor["blocks"][i] if i < len(res_kor["blocks"]) else None
+            if b1 and b2:
+                blocks.append(b1 if b1["conf"] >= b2["conf"] else b2)
+            elif b1:
+                blocks.append(b1)
+            elif b2:
+                blocks.append(b2)
+
+        avg_conf = sum(b["conf"] for b in blocks) / len(blocks) if blocks else 0.0
+        return {"blocks": blocks, "avg_conf": avg_conf, "page": 1, "lang": "/".join(lang_pair)}
 
 

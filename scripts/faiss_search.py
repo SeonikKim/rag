@@ -19,7 +19,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--query", required=True, help="검색할 문장")
     ap.add_argument("--config", default="./configs/config.yaml", help="설정 파일 경로")
-    ap.add_argument("--k", type=int, default=5, help="상위 몇 개를 볼지")
+    ap.add_argument("--k", type=int, default=10, help="상위 몇 개를 볼지")
     ap.add_argument("--device", default="cpu", help="SentenceTransformer 실행 장치(cpu/cuda)")
     args = ap.parse_args()
 
