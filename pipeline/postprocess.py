@@ -39,6 +39,17 @@ def assemble_units_from_page(page_json: Dict, page_no: int, mode: str) -> List[D
                 "conf": b.get("conf", avg_conf),
                 "heading_path": infer_heading_path(page_json, b)
             })
+    elif mode == "pdf_text":
+        text = page_json.get("text", "").replace("-\n", "").replace("\n", " ").strip()
+        if text:
+            units.append({
+                "type": "paragraph",
+                "text": text,
+                "page": page_no,
+                "source": "pdf_text",
+                "conf": 1.0,
+                "heading_path": []
+            })
     else:
         # vision fallback
         summaries = page_json.get("summaries", [])

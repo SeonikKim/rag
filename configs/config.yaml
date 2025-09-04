@@ -1,6 +1,6 @@
 pipeline:
-  dpi: 200            # lower DPI for reduced memory usage
-  ocr_conf_threshold: 0.85
+  dpi: 200            # OCR용 이미지 렌더링 해상도 (텍스트 페이지는 OCR 생략)
+  ocr_conf_threshold: 0.85  # OCR 결과 신뢰도 임계치
 
 chunk:
   max_chars: 800

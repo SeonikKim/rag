@@ -10,7 +10,7 @@ Created: 2025-09-03T01:22:08
 - `pipeline/chunker.py` : 청킹 규칙(길이/타입/overlap)
 - `pipeline/embedder.py` : 임베딩 스텁(Qwen/OpenAI/경량 SBERT 지원)
 - `pipeline/vector_sink.py` : VectorDB 업서트(JSON 파일 기본, Milvus/FAISS 훅)
-- `ingest.py` : 전체 파이프라인 오케스트레이션(골격)
+- `ingest.py` : 전체 파이프라인 오케스트레이션(골격, PDF 내 텍스트 존재 시 OCR 생략)
 - `configs/config.yaml` : 파이프라인 파라미터
 - `requirements.txt` : 의존성 목록(스텁 상태, 선택 설치)
 
@@ -19,7 +19,7 @@ Created: 2025-09-03T01:22:08
 # 가상환경 권장
 python ingest.py --pdf path/to/file.pdf --out ./out --config ./configs/config.yaml
 ```
-> 주의: 현재 OCR/LLM/임베딩은 **스텁**입니다. 실제 엔진 연동 시 해당 파일들의 TODO 주석을 참고해 구현하세요.
+> 주의: 현재 OCR/LLM/임베딩은 **스텁**입니다. PDF에 텍스트가 포함되어 있으면 OCR 없이 처리하며, 스캔본 페이지에만 OCR이 동작합니다. 실제 엔진 연동 시 해당 파일들의 TODO 주석을 참고해 구현하세요.
 
 ## 저사양(CPU) 환경 실행
 - `configs/config.yaml` 은 기본적으로 GPU 없이 동작하도록 경량 SBERT 임베딩과 낮은 DPI(200)를 사용합니다.

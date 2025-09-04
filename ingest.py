@@ -3,6 +3,8 @@
 import argparse, os, yaml, sys, traceback
 from typing import List, Dict
 
+import fitz
+
 from pipeline.pdf_to_image import pdf_to_images
 from pipeline.ocr_dots import DotsOCR
 from pipeline.vision_fallback import fallback_vision
@@ -52,22 +54,60 @@ def main():
     thr = cfg["pipeline"]["ocr_conf_threshold"]
     os.makedirs(args.out, exist_ok=True)
 
-    # 1) PDF → 이미지 변환
-    print("[INFO] Step 1: PDF → Images")
+    # 1) PDF 텍스트 추출 및 이미지 변환(필요시)
+    print("[INFO] Step 1: Inspect PDF pages")
+    text_pages: Dict[int, str] = {}
+    image_pages: List[Dict] = []
     try:
-        pages = pdf_to_images(args.pdf, dpi=dpi, out_dir=args.out, grayscale=True)
+        doc = fitz.open(args.pdf)
+        empty_pages: List[int] = []
+        for pno, page in enumerate(doc, start=1):
+            txt = page.get_text().strip()
+            if txt:
+                text_pages[pno] = txt
+            else:
+                empty_pages.append(pno)
     except Exception as e:
-        print(f"[ERROR] PDF to image failed: {e}")
-        traceback.print_exc()
+        print(f"[ERROR] PDF open failed: {e}")
         sys.exit(1)
-
-    # 2) OCR 수행 또는 Vision 대체
-    print("[INFO] Step 2: OCR → Units")
-    ocr = DotsOCR()
-    units: List[Dict] = []
-    for page_meta in pages:
+    finally:
         try:
-            ocr_page = ocr.run(page_meta["path"])
+            doc.close()
+        except Exception:
+            pass
+
+    if empty_pages:
+        print(f"[INFO] Rendering {len(empty_pages)} page(s) for OCR")
+        try:
+            image_pages = pdf_to_images(
+                args.pdf,
+                dpi=dpi,
+                out_dir=args.out,
+                grayscale=True,
+                page_numbers=empty_pages,
+            )
+        except Exception as e:
+            print(f"[ERROR] PDF to image failed: {e}")
+            traceback.print_exc()
+            sys.exit(1)
+    else:
+        print("[INFO] All pages contain extractable text; skipping image rendering")
+
+    # 2) 텍스트/이미지 기반 단위 구성
+    print("[INFO] Step 2: Text/OCR → Units")
+    ocr = DotsOCR() if image_pages else None
+    units: List[Dict] = []
+
+    # 텍스트가 있는 페이지
+    for pno, txt in text_pages.items():
+        units.extend(
+            assemble_units_from_page({"text": txt}, page_no=pno, mode="pdf_text")
+        )
+
+    # 이미지로 처리된 페이지는 OCR 수행
+    for page_meta in image_pages:
+        try:
+            ocr_page = ocr.run(page_meta["path"]) if ocr else {"blocks": [], "avg_conf": 0.0}
         except Exception as e:
             print(f"[ERROR] OCR failed on {page_meta['path']}: {e}")
             ocr_page = {"blocks": [], "avg_conf": 0.0}
@@ -133,7 +173,8 @@ def main():
         traceback.print_exc()
         sys.exit(1)
 
-    print(f"[OK] Ingested {len(pages)} pages → {len(units)} units → {len(chunks)} chunks")
+    total_pages = len(text_pages) + len(image_pages)
+    print(f"[OK] Ingested {total_pages} pages → {len(units)} units → {len(chunks)} chunks")
 
 
 if __name__ == "__main__":

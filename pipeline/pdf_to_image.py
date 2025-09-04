@@ -18,6 +18,7 @@ def pdf_to_images(
     out_dir: str = "./out",
     fmt: str = "png",
     grayscale: bool = False,
+    page_numbers: List[int] | None = None,
 ) -> List[Dict]:
     """Convert a PDF into page images.
 
@@ -27,6 +28,7 @@ def pdf_to_images(
         out_dir: 출력 디렉터리
         fmt: 저장 포맷 (png, jpg 등)
         grayscale: True면 회색조, False면 RGB로 저장
+        page_numbers: 변환할 페이지 번호 리스트 (1-indexed). None이면 전체 페이지
 
     Returns:
         각 페이지에 대한 메타데이터 리스트. 페이지 번호, 이미지 경로, dpi,
@@ -37,7 +39,10 @@ def pdf_to_images(
     images: List[Dict] = []
 
     try:
+        selected = set(page_numbers) if page_numbers else None
         for page_no, page in enumerate(doc, start=1):
+            if selected and page_no not in selected:
+                continue
             # DPI 반영
             mat = fitz.Matrix(dpi / 72, dpi / 72)
 
