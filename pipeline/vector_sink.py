@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Vector Sink
-- JSON 파일(기본) : 의존성 없이 빠르게 확인 가능
-- Milvus/FAISS : TODO 스텁(연동 지점 명시)
+벡터 저장소(Vector Sink)
+- JSON 파일 : 의존성 없이 간단히 확인 가능
+- FAISS : CPU 기반 벡터 검색 지원
 """
+
 import os
 import json
 import hashlib
@@ -11,6 +12,8 @@ from typing import List, Dict, Sequence
 
 
 class JSONVectorSink:
+    """JSON 파일에 벡터를 저장"""
+
     def __init__(self, path: str = "./data/index.json"):
         self.path = path
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
@@ -39,28 +42,33 @@ class JSONVectorSink:
             doc_id = c.get("meta", {}).get("doc_id", "unknown")
             key_src = f"{doc_id}-{c.get('id')}"
             uid = hashlib.md5(key_src.encode("utf-8")).hexdigest()
-            items.append({
-                "id": uid,
-                "chunk_id": c.get("id"),
-                "text": c.get("text"),
-                "vector": vec,
-                "meta": c.get("meta", {}),
-            })
+            items.append(
+                {
+                    "id": uid,
+                    "chunk_id": c.get("id"),
+                    "text": c.get("text"),
+                    "vector": vec,
+                    "meta": c.get("meta", {}),
+                }
+            )
         data["items"] = items
         self._save(data)
 
 
 class MilvusVectorSink:
+    """Milvus 스텁"""
+
     def __init__(self, cfg: Dict):
         self.cfg = cfg
-        # TODO: pymilvus 연결 및 스키마 생성
+        # TODO: pymilvus 연동 구현
 
     def upsert(self, chunks: List[Dict], vectors: List[List[float]]):
-        # TODO: upsert 구현
         raise NotImplementedError("MilvusVectorSink: TODO - Implement with pymilvus")
 
 
 class FaissVectorSink:
+    """FAISS 기반 벡터 저장/검색"""
+
     def __init__(self, cfg: Dict):
         self.cfg = cfg
         self.index_path = cfg.get("index_path", "./data/index.faiss")
@@ -70,8 +78,8 @@ class FaissVectorSink:
 
         try:
             import faiss  # type: ignore
-        except ImportError as e:
-            raise ImportError("faiss package is required for FaissVectorSink") from e
+        except ImportError as e:  # pragma: no cover
+            raise ImportError("faiss 패키지가 필요합니다") from e
         self.faiss = faiss
 
         if os.path.exists(self.index_path):
@@ -83,7 +91,7 @@ class FaissVectorSink:
             with open(self.meta_path, "r", encoding="utf-8") as f:
                 self.meta = json.load(f)
         else:
-            self.meta = []
+            self.meta = {"items": [], "dim": None, "metric": self.metric}
 
     def _create_index(self, dim: int):
         if self.metric == "IP":
@@ -100,6 +108,10 @@ class FaissVectorSink:
         vecs = np.array(vectors, dtype="float32")
         if self.index is None:
             self.index = self._create_index(vecs.shape[1])
+        # 최초 업서트 시 메타에 차원/메트릭 기록
+        if not self.meta.get("dim"):
+            self.meta["dim"] = vecs.shape[1]
+        self.meta["metric"] = self.metric
 
         self.index.add(vecs)
 
@@ -107,7 +119,7 @@ class FaissVectorSink:
             doc_id = c.get("meta", {}).get("doc_id", "unknown")
             key_src = f"{doc_id}-{c.get('id')}"
             uid = hashlib.md5(key_src.encode("utf-8")).hexdigest()
-            self.meta.append(
+            self.meta["items"].append(
                 {
                     "id": uid,
                     "chunk_id": c.get("id"),
@@ -119,3 +131,17 @@ class FaissVectorSink:
         self.faiss.write_index(self.index, self.index_path)
         with open(self.meta_path, "w", encoding="utf-8") as f:
             json.dump(self.meta, f, ensure_ascii=False, indent=2)
+
+    def search(self, vectors: List[Sequence[float]], k: int = 5):
+        """주어진 벡터에 대해 FAISS 검색 수행"""
+        import numpy as np
+
+        if self.index is None:
+            if os.path.exists(self.index_path):
+                self.index = self.faiss.read_index(self.index_path)
+            else:
+                raise RuntimeError("FAISS 인덱스가 존재하지 않습니다")
+
+        q = np.array(vectors, dtype="float32")
+        return self.index.search(q, k)
+

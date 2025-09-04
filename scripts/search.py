@@ -16,12 +16,11 @@ def main():
     # embed query
     qv = emb.encode([args.query])
 
-    # search
+    # 검색 수행
     vcfg = cfg["vector_sink"]["faiss"]
     sink = FaissVectorSink(vcfg)
-    hits = sink._index.search(__import__("numpy").asarray(qv, dtype="float32"), 5)
-    D, I = hits
-    items = sink._meta["items"]
+    D, I = sink.search(qv, k=5)
+    items = sink.meta["items"]
     for rank, (idx, score) in enumerate(zip(I[0], D[0]), start=1):
         if idx < 0 or idx >= len(items): continue
         it = items[idx]

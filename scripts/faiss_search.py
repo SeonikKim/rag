@@ -4,13 +4,16 @@ import argparse, os, json, yaml, faiss, sys
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
+
 def load_cfg(path="./configs/config.yaml"):
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
+
 def compute_meta_path(index_path: str) -> str:
-    base, _ = os.path.splitext(index_path)
-    return base + ".meta.json"  # ./data/index.faiss -> ./data/index.meta.json
+    """ingest.py와 동일한 규칙(<index>.faiss.meta.json)으로 메타 경로 계산"""
+    return index_path + ".meta.json"
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -40,7 +43,7 @@ def main():
     if index.ntotal == 0 or len(items) == 0:
         raise RuntimeError("인덱스가 비어 있습니다. (chunks=0)")
 
-    # 2) 임베더 로드 (config의 embedder.model 사용)
+    # 2) 임베더 로드
     ecfg = cfg["embedder"]
     model_id = ecfg.get("model", "Qwen/Qwen3-Embedding-0.6B")
     print(f"[INFO] Loading embedder: {model_id} (device={args.device})")
@@ -51,8 +54,22 @@ def main():
     qvec = np.asarray(qvec, dtype="float32")
     D, I = index.search(qvec, k=args.k)
 
-    # 4) 출력 (안전 모드)
+    # 4) 결과 출력
     print(f"\n=== RESULTS (top-{args.k}) ===")
-    threshold = 0.55  # 유사도 기준 (실험 후 조정)
-    found = False
     query_terms = args.query.split()
+    for rank, (idx, score) in enumerate(zip(I[0], D[0]), start=1):
+        if idx < 0 or idx >= len(items):
+            continue
+        it = items[idx]
+        text = it.get("text", "").replace("\n", " ")
+        for qt in query_terms:
+            if qt:
+                text = text.replace(qt, f"[{qt}]")
+        meta_info = it.get("meta", {})
+        print(f"[{rank}] score={float(score):.4f} pages={meta_info.get('pages')}")
+        print(text[:300] + ("..." if len(text) > 300 else ""))
+        print("-" * 80)
+
+
+if __name__ == "__main__":
+    main()
