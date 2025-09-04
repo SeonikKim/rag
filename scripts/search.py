@@ -18,6 +18,7 @@ def main():
 
     # FAISS 인덱스 로드 후 검색 수행
 
+    
     vcfg = cfg["vector_sink"]["faiss"]
     sink = FaissVectorSink(vcfg)
     D, I = sink.search(qv, k=5)

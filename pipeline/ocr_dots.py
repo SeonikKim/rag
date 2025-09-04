@@ -7,14 +7,19 @@ from collections import defaultdict
 from typing import Dict, List
 
 try:  # 선택적 임포트: 설치되어 있지 않으면 None 으로 둔다
-
     from PIL import Image
     import pytesseract
     from pykospacing import Spacing
+    import cv2
+    import numpy as np
+
 except Exception:  # pragma: no cover - optional dependency
     Image = None  # type: ignore
     pytesseract = None  # type: ignore
     Spacing = None  # type: ignore
+    cv2 = None  # type: ignore
+    np = None  # type: ignore
+
 
 
 def data_to_blocks(data: Dict, spacer) -> Dict:
@@ -37,8 +42,10 @@ def data_to_blocks(data: Dict, spacer) -> Dict:
         # 단어를 왼쪽→오른쪽 순으로 정렬
         idxs = sorted(idxs, key=lambda j: data.get("word_num", [0])[j])
         words = [data["text"][j].strip() for j in idxs]
-        raw = " ".join(words)
+        raw = "".join(words)  # 단어 사이 공백 제거 후 스페이싱 적용
         spaced = spacer(raw) if spacer else raw
+        spaced = spaced.replace("  ", " ")  # 이중 공백 정리
+
 
         xs = [data["left"][j] for j in idxs]
         ys = [data["top"][j] for j in idxs]
@@ -66,6 +73,27 @@ def data_to_blocks(data: Dict, spacer) -> Dict:
     return {"blocks": blocks, "avg_conf": avg_conf}
 
 
+def local_polarity(gray: "np.ndarray", tile: int = 128) -> "np.ndarray":
+    """타일 단위로 극성을 판정해 적응형 이진화를 적용"""
+
+    h, w = gray.shape
+    out = gray.copy()
+    for y in range(0, h, tile):
+        for x in range(0, w, tile):
+            ty = min(y + tile, h)
+            tx = min(x + tile, w)
+            tile_img = gray[y:ty, x:tx]
+            mean = tile_img.mean()
+            inv = mean < 128  # 어두운 배경이면 반전 사용
+            ttype = cv2.THRESH_BINARY_INV if inv else cv2.THRESH_BINARY
+            bin_tile = cv2.adaptiveThreshold(
+                tile_img, 255, cv2.ADAPTIVE_THRESH_MEAN_C, ttype, 25, 15
+            )
+            out[y:ty, x:tx] = bin_tile
+    return out
+
+
+
     avg_conf = sum(b["conf"] for b in blocks) / len(blocks) if blocks else 0.0
     return {"blocks": blocks, "avg_conf": avg_conf}
 
@@ -74,9 +102,9 @@ class DotsOCR:
 
     def __init__(self, **kwargs):
         self.opts = kwargs
-        if Image is None or pytesseract is None or Spacing is None:
+        if None in (Image, pytesseract, Spacing, cv2, np):
             raise ImportError(
-                "pytesseract, Pillow, PyKoSpacing 패키지가 필요합니다",
+                "pytesseract, Pillow, OpenCV, numpy, PyKoSpacing 패키지가 필요합니다",
             )
 
         # PyKoSpacing 객체는 비용이 크므로 한 번만 생성
@@ -89,19 +117,45 @@ class DotsOCR:
         )
 
     def run(self, image_path: str) -> Dict:
-        """이미지에서 OCR을 수행하고 줄 단위 결과를 반환"""
+        """여러 전처리 조합으로 OCR을 수행하고 최고 신뢰 결과 반환"""
 
-        img = Image.open(image_path)
+
         lang = self.opts.get("lang", "kor+eng")
 
-        # 단어 단위 정보를 얻어온 뒤 data_to_blocks 로 처리
+        # 원본 이미지를 그레이스케일로 로드
+        gray = Image.open(image_path).convert("L")
+        gray_np = np.array(gray)
 
-        data = pytesseract.image_to_data(
-            img, lang=lang, output_type=pytesseract.Output.DICT
+        def ocr_array(arr: "np.ndarray") -> Dict:
+            """넘파이 배열을 받아 OCR 수행"""
+            pil = Image.fromarray(arr)
+            data = pytesseract.image_to_data(
+                pil, lang=lang, output_type=pytesseract.Output.DICT
+            )
+            return data_to_blocks(data, self.spacer)
+
+        cands: List[Dict] = []
+
+        # 1) 원본
+        cands.append(ocr_array(gray_np))
+
+        # 2) 전역 반전
+        inv = cv2.bitwise_not(gray_np)
+        cands.append(ocr_array(inv))
+
+        # 3) 그레이스케일 + 적응 이진화
+        th = cv2.adaptiveThreshold(
+            gray_np, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 25, 15
         )
+        cands.append(ocr_array(th))
 
-        res = data_to_blocks(data, self.spacer)
-        res.update({"page": 1, "lang": lang})
-        return res
+        # 4) 타일 단위 극성 판정 + 적응 이진화
+        local = local_polarity(gray_np)
+        cands.append(ocr_array(local))
 
-      
+        # 평균 신뢰도가 가장 높은 결과 선택
+        best = max(cands, key=lambda d: d.get("avg_conf", 0.0))
+        best.update({"page": 1, "lang": lang})
+        return best
+
+
