@@ -18,12 +18,13 @@ class QwenEmbedder(BaseEmbedder):
     ):
         try:
             from sentence_transformers import SentenceTransformer
+
+ main
         except Exception as e:
             raise ImportError(
                 "sentence-transformers 임포트 실패. 'pip install \"transformers>=4.41,<5\" \"sentence-transformers>=2.7,<3\"' 로 설치했는지 확인하세요"
             ) from e
 
-        self.model = SentenceTransformer(model_name, device=device)
         self.normalize = normalize
         self.dim = self.model.get_sentence_embedding_dimension()
         self.batch_size = batch_size
@@ -98,12 +99,13 @@ class LocalSBERTEmbedder(BaseEmbedder):
     ):
         try:
             from sentence_transformers import SentenceTransformer
+
+ main
         except Exception as e:
             raise ImportError(
                 "sentence-transformers 임포트 실패. 'pip install \"transformers>=4.41,<5\" \"sentence-transformers>=2.7,<3\"' 로 설치했는지 확인하세요"
             ) from e
 
-        self.model = SentenceTransformer(model_name, device=device)
         self.normalize = normalize
         self.dim = dim or self.model.get_sentence_embedding_dimension()
         self.batch_size = batch_size
