@@ -148,6 +148,11 @@ def main():
     ap.add_argument("--pdf", required=True, help="Input PDF path")
     ap.add_argument("--out", default="./out", help="Output directory for images")
     ap.add_argument("--config", default="./configs/config.yaml", help="YAML config path")
+    ap.add_argument(
+        "--ocr-only",
+        action="store_true",
+        help="PDF 내 텍스트를 무시하고 모든 페이지를 OCR 처리",
+    )
     args = ap.parse_args()
 
     try:
@@ -160,19 +165,22 @@ def main():
     thr = cfg["pipeline"]["ocr_conf_threshold"]
     os.makedirs(args.out, exist_ok=True)
 
-    # 1) PDF 텍스트 추출 및 이미지 변환(필요시)
+    # 1) PDF 텍스트 추출 및 이미지 변환(필요 시)
     print("[INFO] Step 1: Inspect PDF pages")
     text_pages: Dict[int, str] = {}
     image_pages: List[Dict] = []
     try:
         doc = fitz.open(args.pdf)
         empty_pages: List[int] = []
-        for pno, page in enumerate(doc, start=1):
-            txt = page.get_text().strip()
-            if txt:
-                text_pages[pno] = txt
-            else:
-                empty_pages.append(pno)
+        if args.ocr_only:
+            empty_pages = list(range(1, doc.page_count + 1))
+        else:
+            for pno, page in enumerate(doc, start=1):
+                txt = page.get_text().strip()
+                if txt:
+                    text_pages[pno] = txt
+                else:
+                    empty_pages.append(pno)
     except Exception as e:
         print(f"[ERROR] PDF open failed: {e}")
         sys.exit(1)
@@ -183,7 +191,10 @@ def main():
             pass
 
     if empty_pages:
-        print(f"[INFO] Rendering {len(empty_pages)} page(s) for OCR")
+        if args.ocr_only:
+            print(f"[INFO] OCR-only 모드: {len(empty_pages)}페이지 모두 렌더링")
+        else:
+            print(f"[INFO] Rendering {len(empty_pages)} page(s) for OCR")
         try:
             image_pages = pdf_to_images(
                 args.pdf,

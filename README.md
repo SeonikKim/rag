@@ -19,8 +19,16 @@ Created: 2025-09-03T01:22:08
 ```bash
 # 가상환경 권장
 python ingest.py --pdf path/to/file.pdf --out ./out --config ./configs/config.yaml
+# 모든 페이지를 강제로 OCR하려면 --ocr-only 옵션 추가
+python ingest.py --pdf path/to/file.pdf --out ./out --config ./configs/config.yaml --ocr-only
 ```
-> 주의: 현재 OCR/LLM/임베딩은 **스텁**입니다. PDF에 텍스트가 포함되어 있으면 OCR 없이 처리하며, 스캔본 페이지에만 OCR이 동작합니다. 실제 엔진 연동 시 해당 파일들의 TODO 주석을 참고해 구현하세요.
+> 주의: 현재 OCR/LLM/임베딩은 **스텁**입니다. 기본적으로 PDF에 텍스트가 포함되어 있으면 OCR 없이 처리하며, 스캔본 페이지에만 OCR이 동작합니다. 모든 페이지에 OCR을 적용하려면 `--ocr-only` 옵션을 사용하세요. 실제 엔진 연동 시 해당 파일들의 TODO 주석을 참고해 구현하세요.
+
+## OCR 텍스트 검증 및 수정
+- `ingest.py` 실행이 끝나면 OCR 처리된 각 페이지의 이미지와 텍스트가 자동으로 표시됩니다.
+  - 환경변수 `EDITOR` 가 설정되어 있으면 해당 편집기가 열리고, 그렇지 않으면 경로만 안내합니다.
+  - 텍스트를 저장하고 창을 닫으면 다음 페이지로 넘어갑니다.
+- 사용자가 수정한 내용은 자동으로 `out/units_corrected.json`에 반영되며 이후 파이프라인에서 활용됩니다.
 
 ## OCR 텍스트 검증 및 수정
 - `ingest.py` 실행이 끝나면 OCR 처리된 각 페이지의 이미지와 텍스트가 자동으로 표시됩니다.
