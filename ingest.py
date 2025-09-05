@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import argparse, os, sys, traceback
+import argparse, os, sys, traceback, json
 from typing import List, Dict
 
 import fitz
@@ -166,6 +166,17 @@ def main():
             units.extend(
                 assemble_units_from_page(ocr_page, page_no=page_meta["page"], mode="ocr")
             )
+    # OCR 결과 및 유닛 전체를 JSON/텍스트로 저장해 검증·수정 가능하도록 함
+    units_path = os.path.join(args.out, "units.json")
+    with open(units_path, "w", encoding="utf-8") as f:
+        json.dump(units, f, ensure_ascii=False, indent=2)
+
+    for u in units:
+        if u.get("source") == "ocr":
+            txt_path = os.path.join(args.out, f"p{u['page']:04d}.txt")
+            with open(txt_path, "a", encoding="utf-8") as f:
+                f.write(u["text"] + "\n")
+
     # pdf_text만 인덱싱 (vision/ocr 결과는 별도 컬렉션으로 처리)
     units = [u for u in units if u.get("source") == "pdf_text"]
 
