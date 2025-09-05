@@ -22,6 +22,16 @@ python ingest.py --pdf path/to/file.pdf --out ./out --config ./configs/config.ya
 ```
 > 주의: 현재 OCR/LLM/임베딩은 **스텁**입니다. PDF에 텍스트가 포함되어 있으면 OCR 없이 처리하며, 스캔본 페이지에만 OCR이 동작합니다. 실제 엔진 연동 시 해당 파일들의 TODO 주석을 참고해 구현하세요.
 
+## OCR 텍스트 검증 및 수정
+- `ingest.py` 실행 후 `out/units.json` 과 `out/p0001.txt` 같은 파일이 생성됩니다.
+- `pXXXX.txt` 파일을 열어 잘못 인식된 문장을 직접 고친 뒤 아래 스크립트를 실행하세요.
+
+```bash
+python scripts/apply_ocr_corrections.py --out ./out
+```
+
+- 수정된 내용은 `out/units_corrected.json`에 저장되며, 이후 청킹/임베딩 단계에서 활용할 수 있습니다.
+
 ## `meta.json` 재청킹
 1. 인제스트가 완료되면 `.faiss.meta.json` 파일이 생성됩니다.
 2. 해당 메타를 문단·불릿·표 행 단위로 재청킹하려면 다음 스크립트를 실행하세요.
