@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import argparse, os, sys, traceback, json
+import argparse, os, sys, traceback, json, glob, subprocess
+
 from typing import List, Dict
 
 import fitz
@@ -69,6 +70,77 @@ def choose_sink(cfg: dict):
         return FaissVectorSink(fc)
     else:
         raise ValueError(f"Unknown vector_sink type: {typ}")
+
+
+def review_ocr_pages(out_dir: str) -> None:
+    """OCR 이미지와 텍스트를 한 화면에 보여주고 수정 기회를 제공"""
+    try:
+        from PIL import Image  # type: ignore
+        import matplotlib.pyplot as plt  # type: ignore
+        import textwrap
+    except Exception as e:  # pylint: disable=broad-except
+        print(f"[WARN] OCR 검증 도구 불러오기 실패: {e}")
+        print("[WARN] OCR 검증을 건너뜁니다")
+        return
+
+    txt_files = sorted(glob.glob(os.path.join(out_dir, "p*.txt")))
+    editor = os.environ.get("EDITOR")
+    for txt_path in txt_files:
+        page = int(os.path.basename(txt_path)[1:5])
+        img_path = os.path.join(out_dir, f"p{page:04d}.png")
+        if not os.path.exists(img_path):
+            continue
+        with open(txt_path, encoding="utf-8") as f:
+            text = f.read()
+        img = Image.open(img_path)
+
+        plt.figure(figsize=(10, 6))
+        plt.subplot(1, 2, 1)
+        plt.imshow(img)
+        plt.axis("off")
+        plt.title(f"Page {page}")
+        plt.subplot(1, 2, 2)
+        plt.axis("off")
+        plt.title("OCR Text")
+        plt.text(0, 1, "\n".join(textwrap.wrap(text, 40)), va="top")
+        plt.tight_layout()
+        plt.show()
+
+        if editor:
+            print(f"[INFO] {editor} 편집기로 텍스트 수정: {txt_path}")
+            try:
+                subprocess.run([editor, txt_path], check=False)
+            except Exception as e:  # pylint: disable=broad-except
+                print(f"[WARN] 편집기 실행 실패: {e}")
+        else:
+            input(f"[INFO] {txt_path} 파일을 수정한 뒤 Enter를 누르세요...")
+
+
+def apply_ocr_corrections(units: List[Dict], out_dir: str) -> List[Dict]:
+    """사용자 수정 내용(pXXXX.txt)을 units에 반영"""
+    pages: Dict[int, List[Dict]] = {}
+    for u in units:
+        if u.get("source") == "ocr":
+            pages.setdefault(u["page"], []).append(u)
+
+    for page, ulist in pages.items():
+        txt_path = os.path.join(out_dir, f"p{page:04d}.txt")
+        if not os.path.exists(txt_path):
+            continue
+        with open(txt_path, encoding="utf-8") as f:
+            lines = [ln.rstrip("\n") for ln in f]
+        if len(lines) != len(ulist):
+            print(
+                f"[WARN] 페이지 {page}: 줄 수 불일치 (units {len(ulist)} vs text {len(lines)})"
+            )
+            continue
+        for u, line in zip(ulist, lines):
+            u["text"] = line
+
+    corr_path = os.path.join(out_dir, "units_corrected.json")
+    with open(corr_path, "w", encoding="utf-8") as f:
+        json.dump(units, f, ensure_ascii=False, indent=2)
+    return units
 
 
 def main():
@@ -177,8 +249,9 @@ def main():
             with open(txt_path, "a", encoding="utf-8") as f:
                 f.write(u["text"] + "\n")
 
-    # pdf_text만 인덱싱 (vision/ocr 결과는 별도 컬렉션으로 처리)
-    units = [u for u in units if u.get("source") == "pdf_text"]
+    review_ocr_pages(args.out)
+    units = apply_ocr_corrections(units, args.out)
+
 
     # 3) Exaone 기반 구조화/요약
     print("[INFO] Step 3: Structure & Summarize")
