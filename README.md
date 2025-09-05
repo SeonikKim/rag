@@ -28,6 +28,7 @@ python ingest.py --pdf path/to/file.pdf --out ./out --config ./configs/config.ya
   - 텍스트를 저장하고 창을 닫으면 다음 페이지로 넘어갑니다.
 - 사용자가 수정한 내용은 자동으로 `out/units_corrected.json`에 반영되며 이후 파이프라인에서 활용됩니다.
 
+
 ## `meta.json` 재청킹
 1. 인제스트가 완료되면 `.faiss.meta.json` 파일이 생성됩니다.
 2. 해당 메타를 문단·불릿·표 행 단위로 재청킹하려면 다음 스크립트를 실행하세요.

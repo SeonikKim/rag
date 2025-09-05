@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import argparse, os, sys, traceback, json, glob, subprocess
+
 from typing import List, Dict
 
 import fitz
@@ -250,6 +251,7 @@ def main():
 
     review_ocr_pages(args.out)
     units = apply_ocr_corrections(units, args.out)
+
 
     # 3) Exaone 기반 구조화/요약
     print("[INFO] Step 3: Structure & Summarize")
