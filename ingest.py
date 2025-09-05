@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import argparse, os, sys, traceback
+import argparse, os, sys, traceback, json, glob, subprocess
 from typing import List, Dict
 
 import fitz
@@ -71,11 +71,87 @@ def choose_sink(cfg: dict):
         raise ValueError(f"Unknown vector_sink type: {typ}")
 
 
+def review_ocr_pages(out_dir: str) -> None:
+    """OCR 이미지와 텍스트를 한 화면에 보여주고 수정 기회를 제공"""
+    try:
+        from PIL import Image  # type: ignore
+        import matplotlib.pyplot as plt  # type: ignore
+        import textwrap
+    except Exception as e:  # pylint: disable=broad-except
+        print(f"[WARN] OCR 검증 도구 불러오기 실패: {e}")
+        print("[WARN] OCR 검증을 건너뜁니다")
+        return
+
+    txt_files = sorted(glob.glob(os.path.join(out_dir, "p*.txt")))
+    editor = os.environ.get("EDITOR")
+    for txt_path in txt_files:
+        page = int(os.path.basename(txt_path)[1:5])
+        img_path = os.path.join(out_dir, f"p{page:04d}.png")
+        if not os.path.exists(img_path):
+            continue
+        with open(txt_path, encoding="utf-8") as f:
+            text = f.read()
+        img = Image.open(img_path)
+
+        plt.figure(figsize=(10, 6))
+        plt.subplot(1, 2, 1)
+        plt.imshow(img)
+        plt.axis("off")
+        plt.title(f"Page {page}")
+        plt.subplot(1, 2, 2)
+        plt.axis("off")
+        plt.title("OCR Text")
+        plt.text(0, 1, "\n".join(textwrap.wrap(text, 40)), va="top")
+        plt.tight_layout()
+        plt.show()
+
+        if editor:
+            print(f"[INFO] {editor} 편집기로 텍스트 수정: {txt_path}")
+            try:
+                subprocess.run([editor, txt_path], check=False)
+            except Exception as e:  # pylint: disable=broad-except
+                print(f"[WARN] 편집기 실행 실패: {e}")
+        else:
+            input(f"[INFO] {txt_path} 파일을 수정한 뒤 Enter를 누르세요...")
+
+
+def apply_ocr_corrections(units: List[Dict], out_dir: str) -> List[Dict]:
+    """사용자 수정 내용(pXXXX.txt)을 units에 반영"""
+    pages: Dict[int, List[Dict]] = {}
+    for u in units:
+        if u.get("source") == "ocr":
+            pages.setdefault(u["page"], []).append(u)
+
+    for page, ulist in pages.items():
+        txt_path = os.path.join(out_dir, f"p{page:04d}.txt")
+        if not os.path.exists(txt_path):
+            continue
+        with open(txt_path, encoding="utf-8") as f:
+            lines = [ln.rstrip("\n") for ln in f]
+        if len(lines) != len(ulist):
+            print(
+                f"[WARN] 페이지 {page}: 줄 수 불일치 (units {len(ulist)} vs text {len(lines)})"
+            )
+            continue
+        for u, line in zip(ulist, lines):
+            u["text"] = line
+
+    corr_path = os.path.join(out_dir, "units_corrected.json")
+    with open(corr_path, "w", encoding="utf-8") as f:
+        json.dump(units, f, ensure_ascii=False, indent=2)
+    return units
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pdf", required=True, help="Input PDF path")
     ap.add_argument("--out", default="./out", help="Output directory for images")
     ap.add_argument("--config", default="./configs/config.yaml", help="YAML config path")
+    ap.add_argument(
+        "--ocr-only",
+        action="store_true",
+        help="PDF 내 텍스트를 무시하고 모든 페이지를 OCR 처리",
+    )
     args = ap.parse_args()
 
     try:
@@ -88,19 +164,22 @@ def main():
     thr = cfg["pipeline"]["ocr_conf_threshold"]
     os.makedirs(args.out, exist_ok=True)
 
-    # 1) PDF 텍스트 추출 및 이미지 변환(필요시)
+    # 1) PDF 텍스트 추출 및 이미지 변환(필요 시)
     print("[INFO] Step 1: Inspect PDF pages")
     text_pages: Dict[int, str] = {}
     image_pages: List[Dict] = []
     try:
         doc = fitz.open(args.pdf)
         empty_pages: List[int] = []
-        for pno, page in enumerate(doc, start=1):
-            txt = page.get_text().strip()
-            if txt:
-                text_pages[pno] = txt
-            else:
-                empty_pages.append(pno)
+        if args.ocr_only:
+            empty_pages = list(range(1, doc.page_count + 1))
+        else:
+            for pno, page in enumerate(doc, start=1):
+                txt = page.get_text().strip()
+                if txt:
+                    text_pages[pno] = txt
+                else:
+                    empty_pages.append(pno)
     except Exception as e:
         print(f"[ERROR] PDF open failed: {e}")
         sys.exit(1)
@@ -111,7 +190,10 @@ def main():
             pass
 
     if empty_pages:
-        print(f"[INFO] Rendering {len(empty_pages)} page(s) for OCR")
+        if args.ocr_only:
+            print(f"[INFO] OCR-only 모드: {len(empty_pages)}페이지 모두 렌더링")
+        else:
+            print(f"[INFO] Rendering {len(empty_pages)} page(s) for OCR")
         try:
             image_pages = pdf_to_images(
                 args.pdf,
@@ -166,8 +248,19 @@ def main():
             units.extend(
                 assemble_units_from_page(ocr_page, page_no=page_meta["page"], mode="ocr")
             )
-    # pdf_text만 인덱싱 (vision/ocr 결과는 별도 컬렉션으로 처리)
-    units = [u for u in units if u.get("source") == "pdf_text"]
+    # OCR 결과 및 유닛 전체를 JSON/텍스트로 저장해 검증·수정 가능하도록 함
+    units_path = os.path.join(args.out, "units.json")
+    with open(units_path, "w", encoding="utf-8") as f:
+        json.dump(units, f, ensure_ascii=False, indent=2)
+
+    for u in units:
+        if u.get("source") == "ocr":
+            txt_path = os.path.join(args.out, f"p{u['page']:04d}.txt")
+            with open(txt_path, "a", encoding="utf-8") as f:
+                f.write(u["text"] + "\n")
+
+    review_ocr_pages(args.out)
+    units = apply_ocr_corrections(units, args.out)
 
     # 3) Exaone 기반 구조화/요약
     print("[INFO] Step 3: Structure & Summarize")
